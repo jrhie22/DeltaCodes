@@ -1,19 +1,17 @@
 import streamlit as st
 import tempfile, json, os
 from pipeline.pdf_parser import extract_text
-from pipeline.extractor import extract_codes
-from pipeline.differ import compute_diff
 from pipeline.llm_analyzer import analyze_diff
 
-st.set_page_config(page_title="Policy Diff Tool", layout="wide")
+st.set_page_config(page_title="Delta Codes", layout="wide")
 st.title("Policy Change Highlighter")
 st.caption("Upload two policy PDFs to detect and summarize what changed.")
 
 col1, col2 = st.columns(2)
 with col1:
-    old_file = st.file_uploader("Old Policy (e.g. CY 2025)", type="pdf")
+    old_file = st.file_uploader("Old Policy", type="pdf")
 with col2:
-    new_file = st.file_uploader("New Policy (e.g. CY 2026)", type="pdf")
+    new_file = st.file_uploader("New Policy", type="pdf")
 
 if old_file and new_file and st.button("Run Analysis"):
     with st.spinner("Parsing PDFs..."):
@@ -26,17 +24,10 @@ if old_file and new_file and st.button("Run Analysis"):
         old_text = extract_text(old_path)
         new_text = extract_text(new_path)
 
-    with st.spinner("Extracting codes..."):
-        old_codes = extract_codes(old_text)
-        new_codes = extract_codes(new_text)
+    with st.spinner("AI analyzing changes..."):
+        analysis = analyze_diff(old_text, new_text)
 
-    with st.spinner("Computing diff..."):
-        diff = compute_diff(old_codes, new_codes)
-
-    with st.spinner("Asking AI to analyze changes..."):
-        analysis = analyze_diff(diff, old_text, new_text)
-
-    # ── Results ──────────────────────────────────────────────
+    # Results below
     
     # Status badge
     status = analysis.get("review_status", "unknown")
@@ -49,18 +40,13 @@ if old_file and new_file and st.button("Run Analysis"):
     st.subheader("Summary")
     st.info(analysis.get("summary", ""))
 
-    # Stats
-    s = diff["stats"]
-    m1, m2, m3 = st.columns(3)
-    m1.metric("Codes Added", s["added_count"])
-    m2.metric("Codes Deleted", s["deleted_count"])
-    m3.metric("Codes Changed", s["changed_count"])
-
     # Classified changes table
     st.subheader("Classified Changes")
     changes = analysis.get("classified_changes", [])
     if changes:
         st.table(changes)
+    else:
+        st.write("No changes are found")
 
     # Ambiguities
     st.subheader("Ambiguities — Requires Human Review")
@@ -74,11 +60,12 @@ if old_file and new_file and st.button("Run Analysis"):
 
     # Raw JSON download
     st.download_button(
-        "Download Full Report (JSON)",
-        data=json.dumps({"diff": diff, "analysis": analysis}, indent=2),
-        file_name="policy_diff_report.json",
+        "Download Report (JSON)",
+        data=json.dumps({"analysis": analysis}, indent=2),
+        file_name="DeltaCodes Report.json",
         mime="application/json"
     )
 
     # Cleanup
-    os.unlink(old_path); os.unlink(new_path)
+    os.unlink(old_path)
+    os.unlink(new_path)
